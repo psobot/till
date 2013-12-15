@@ -1,0 +1,54 @@
+{
+    "port": 12345,
+    "bind": "127.0.0.1",
+    "providers": [
+        {
+            "type": "redis",
+            "name": "my_redis_instance",
+            
+            "host": "123.123.123.123",
+            "port": 7777, 
+            "db":   0,
+            
+            "maxsize": 1073741824,
+            "maxitems": 10000
+        },
+        {
+            "type": "file",
+            "name": "local_filesystem",
+            
+            "path": "/var/cache/till",
+            "maxsize": 1073741824,
+            "maxitems": 10000
+        },
+        {
+            "type": "till",
+            "name": "cluster",
+                            
+            "request_types": [
+                "local_filesystem"
+            ],
+            "servers": [
+                "123.123.123.123"
+            ]
+        },
+        {
+            "type": "s3",
+            "name": "my_preferred_bucket",
+            
+            "aws_user_name": "username",
+            "aws_access_key_id": "key_id",
+            "aws_secret_access_key": "key_secret",
+            "aws_s3_bucket": "com.example.mybucket",
+            "aws_s3_path": "optional/path/"   
+        },
+        {
+            "type": "rackspace",
+            "name": "my_preferred_rackspace",
+            
+            "rackspace_user_name": "username",
+            "rackspace_api_key": "key",
+            "rackspace_region": "ATL"      
+        }
+    ]
+}
