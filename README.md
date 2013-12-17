@@ -90,7 +90,7 @@ Response Headers:
   
 Return codes:
 
-  - `200 OK` is returned if an object with the given `object_identifer` already exists in the cache. If the object supplied by the request differs from the object already in the cache, **the object in the cache will remain** and the newly `POST`ed object will be ignored.
+  - `200 OK` is returned if an object with the given `object_identifer` already exists in the cache. If the object supplied by the request differs from the object already in the cache, **the object in the cache will remain** and the newly `POST`ed object will be ignored. (The `X-Till-Lifespan` header will be updated; the `X-Till-Metadata` value will not.)
   - `201 Created` is returned if the object has been persisted to all caches.
   - `202 Accepted` is returned if the object has been persisted to at least one cache.
   - `400 Bad Request` is returned if:
@@ -100,6 +100,8 @@ Return codes:
       - The supplied `X-Till-Metadata` header is longer than 4096 bytes.
       
     In case of a bad request, the reason for the bad request will be supplied in quoted plaintext (which happens to be valid JSON).
+  - `502 Bad Gateway` is returned if the object could not be persisted to any caches.
+  - `504 Gateway Timeout` is returned if the object could not be persisted to any caches before they timed out.
     
 #### `PUT /api/v1/object/<object_identifier>`
 Update an object's lifespan in the cache. The body of this request must be empty, and the data to be updated must be specified by the headers of the request.

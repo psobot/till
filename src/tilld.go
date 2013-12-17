@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	//"fmt"
-	//"github.com/garyburd/redigo/redis"
+
 	"log"
 	"math/rand"
 	"net/http"
@@ -106,6 +106,8 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 	if id != nil {
 		for _, p := range state.Providers {
 			if o, err := p.Get(*id); o != nil && err == nil {
+				defer o.Close()
+
 				size, err := o.GetSize()
 				if err == nil && size != -1 {
 					writer.Header().Set("Content-Length", strconv.FormatInt(size, 10))
@@ -116,11 +118,17 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 				}
 
 				for {
-					data, err := o.Read(4096)
+					read := 4096
+
+					data, err := o.Read(read)
 					if len(data) == 0 || err != nil {
 						break
 					} else {
 						writer.Write(data)
+					}
+
+					if len(data) < read {
+						break
 					}
 				}
 				return
@@ -147,7 +155,7 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		http.Error(writer, "\"X-Till-Lifespan header must be provided.", 400)
+		http.Error(writer, "\"X-Till-Lifespan header must be provided.\"", 400)
 		return
 	}
 
@@ -166,15 +174,62 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 			reader: r.Body,
 			size:   r.ContentLength,
 		}
+		defer obj.Close()
 
 		//	TODO: Implement X-Till-Synchronous logic here.
+		var synchronous bool
+		synchronous_s := r.Header.Get("X-Till-Synchronous")
+		if len(synchronous_s) > 0 {
+			switch synchronous_s {
+			case "0":
+				synchronous = false
+			case "1":
+				synchronous = true
+			default:
+				http.Error(writer, "\"X-Till-Synchronous header is not exactly 0 or 1.\"", 400)
+				return
+			}
+		} else {
+			synchronous = false
+		}
+
+		//	TODO: Dispatch to all providers should happen at once, not sequentially.
+		//	TODO: Dispatch to each provider should have a timeout associated with it.
+		async := false
+		success := false
 		for _, p := range state.Providers {
-			_, err := p.Put(&obj)
+			var err error
+			if async {
+				go func() {
+					o, err := p.Put(&obj)
+					if o != nil {
+						defer o.Close()
+					}
+					if err != nil {
+						log.Printf("Error while asynchronously saving object to %v: %v", p, err)
+					}
+				}()
+			} else {
+				o, err := p.Put(&obj)
+				if o != nil {
+					defer o.Close()
+				}
+			}
 			if err != nil {
-				log.Printf("Error while saving file to %v: %v", p, err)
+				log.Printf("Error while saving object to %v: %v", p, err)
+			} else {
+				success = true
+				async = !synchronous
 			}
 		}
-		writer.WriteHeader(201)
+
+		if success && async {
+			writer.WriteHeader(202)
+		} else if success { // && !async
+			writer.WriteHeader(201)
+		} else { // !success && !async
+			writer.WriteHeader(502)
+		} // TODO: Implement 504
 	}
 }
 

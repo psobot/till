@@ -10,6 +10,7 @@ type Object interface {
 
 	GetSize() (int64, error)
 	Read(length int) ([]byte, error)
+	Close()
 }
 
 type BaseObject struct {
@@ -45,6 +46,10 @@ func (b *BaseObject) GetSize() (int64, error) {
 
 func (b *BaseObject) Read(length int) ([]byte, error) {
 	return []byte{}, nil
+}
+
+func (b *BaseObject) Close() {
+
 }
 
 type UploadObject struct {

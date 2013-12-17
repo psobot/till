@@ -7,11 +7,10 @@
             "type": "redis",
             "name": "my_redis_instance",
             
-            "host": "123.123.123.123",
-            "port": 7777, 
+            "host": "localhost",
+            "port": 6379,
             "db":   0,
             
-            "maxsize": 1073741824,
             "maxitems": 10000
         },
         {
@@ -19,8 +18,8 @@
             "name": "local_filesystem",
             
             "path": "/var/cache/till",
-            "maxsize": 1024,
-            "maxitems": 4
+            "maxsize": 10737418240,
+            "maxitems": 0
         },
         {
             "type": "till",

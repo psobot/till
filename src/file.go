@@ -238,7 +238,7 @@ func (p *FileProvider) Remove(key string) error {
 		log.Printf("Could not remove object %v: %v", key, err)
 		return err
 	} else {
-		log.Printf("Removed object %v.", key)
+		log.Printf("Removing object %v from local filesystem cache.", key)
 		err = os.Remove(p.GetMetadataPath(key))
 		if err != nil {
 			log.Printf("Could not remove metadata for %v: %v", key, err)
@@ -316,7 +316,11 @@ func (p *FileProvider) GetFilePath(id string) string {
 }
 
 func (p *FileProvider) GetMetadataPath(id string) string {
-	return p.GetConfig().Path + "/metadata/" + id + ".json"
+	if len(id) > 0 {
+		return p.GetConfig().Path + "/metadata/" + id + ".json"
+	} else {
+		return p.GetConfig().Path + "/metadata/"
+	}
 }
 
 func (p *FileProvider) SaveMetadata(o FileObject) error {
@@ -379,46 +383,84 @@ func (p *FileProvider) GetURL(id string) (Object, error) {
 }
 
 func (p *FileProvider) Put(o Object) (Object, error) {
-	file, err := os.Create(p.GetFilePath(o.GetBaseObject().identifier))
-	if err != nil {
-		return nil, err
+	objectPath := p.GetFilePath(o.GetBaseObject().identifier)
+
+	if _, exists := p.cache[o.GetBaseObject().identifier]; exists {
+		return p.Update(o)
 	} else {
-		fo := FileObject{
-			BaseObject: o.GetBaseObject(),
-			File:       file,
-		}
-		for {
-			data, err := o.Read(4096)
-			if len(data) == 0 || err != nil {
-				break
+		file, err := os.OpenFile(objectPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+		if err != nil {
+			if os.IsExist(err) {
+				return p.Update(o)
 			} else {
-				file.Write(data)
+				return nil, err
 			}
-		}
-
-		if err != nil {
-			os.Remove(file.Name())
-			return nil, err
-		}
-
-		err = file.Close()
-		if err != nil {
-			os.Remove(file.Name())
-			return nil, err
 		} else {
-			err = p.SaveMetadata(fo)
+			fo := FileObject{
+				BaseObject: o.GetBaseObject(),
+				File:       file,
+			}
+			for {
+				data, err := o.Read(4096)
+				if len(data) == 0 || err != nil {
+					break
+				} else {
+					file.Write(data)
+				}
+			}
+
 			if err != nil {
+				os.Remove(file.Name())
+				return nil, err
+			}
+
+			err = file.Close()
+			if err != nil {
+				os.Remove(file.Name())
 				return nil, err
 			} else {
-				p.add <- &fo
-				return &fo, nil
+				err = p.SaveMetadata(fo)
+				if err != nil {
+					return nil, err
+				} else {
+					p.add <- &fo
+					return &fo, nil
+				}
 			}
 		}
 	}
 }
 
 func (p *FileProvider) Update(o Object) (Object, error) {
-	return nil, nil
+	bo := o.GetBaseObject()
+
+	fo := FileObject{
+		BaseObject: bo,
+	}
+
+	if _, ok := p.cache[bo.identifier]; ok {
+		p.add <- &fo
+		err := p.SaveMetadata(fo)
+		if err != nil {
+			return nil, err
+		} else {
+			return &fo, nil
+		}
+	} else {
+		//  Check the disk
+		fo, err := p.LoadMetadata(bo.identifier)
+		if err != nil {
+			return nil, err
+		} else {
+			fo.Expires = bo.Expires
+			err = p.SaveMetadata(*fo)
+			if err != nil {
+				return nil, err
+			} else {
+				return fo, err
+			}
+		}
+	}
 }
 
 type FileObject struct {
@@ -444,4 +486,8 @@ func (f *FileObject) Read(length int) ([]byte, error) {
 	} else {
 		return buf[:len], nil
 	}
+}
+
+func (f *FileObject) Close() {
+	f.File.Close()
 }

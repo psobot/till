@@ -53,7 +53,7 @@ func NewState() State {
 			log.Printf("Instantiated provider: %v", p)
 			err = p.Connect()
 			if err != nil {
-				log.Printf("Could not conncet provider: %v, %v", p, err)
+				log.Printf("Could not connect provider: %v, %v", p, err)
 			} else {
 				state.Providers = append(state.Providers, p)
 			}
