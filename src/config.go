@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 )
@@ -10,6 +9,7 @@ import (
 type ProviderConfig interface {
 	Name() string
 	Type() string
+	NewProvider() (Provider, error)
 }
 
 type BaseProviderConfig struct {
@@ -23,6 +23,10 @@ func (c BaseProviderConfig) Name() string {
 
 func (c BaseProviderConfig) Type() string {
 	return c.kind
+}
+
+func (c BaseProviderConfig) NewProvider() (Provider, error) {
+	return nil, nil
 }
 
 func NewProviderConfig(data map[string]interface{}) ProviderConfig {
@@ -96,23 +100,18 @@ type Config struct {
 	Providers []ProviderConfig `json:"providers"`
 }
 
-func (c *Config) ReadFromJSON(config string) {
+func NewConfigFromJSON(config string) (*Config, error) {
 	file, e := ioutil.ReadFile("./config.json")
 	if e != nil {
-		log.Printf("Config file error: %v", e)
-		return
+		return nil, e
 	}
 
 	tmp_config := &IncomingConfig{}
 
-	err := json.Unmarshal(file, tmp_config)
-	if err != nil {
-		log.Printf("Could not unmarshal json: %v", err)
-		return
+	e = json.Unmarshal(file, tmp_config)
+	if e != nil {
+		return nil, e
 	} else {
-		c = tmp_config.toConfig()
-
-		data, _ := json.MarshalIndent(c, "", "\t")
-		fmt.Printf(string(data))
+		return tmp_config.toConfig(), nil
 	}
 }

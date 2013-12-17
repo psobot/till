@@ -71,3 +71,27 @@ func NewS3ProviderConfig(base BaseProviderConfig, data map[string]interface{}) (
 
 	return &config, nil
 }
+
+type S3Provider struct {
+	BaseProvider
+}
+
+func (c *S3ProviderConfig) NewProvider() (Provider, error) {
+	return &S3Provider{BaseProvider{c}}, nil
+}
+
+func (p *S3Provider) Get(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *S3Provider) GetURL(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *S3Provider) Put(o Object) (Object, error) {
+	return nil, nil
+}
+
+func (p *S3Provider) Update(o Object) (Object, error) {
+	return nil, nil
+}

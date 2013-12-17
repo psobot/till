@@ -4,3 +4,6 @@ default: $(wildcard src/*.go)
 
 run: default
 	./bin/tilld
+
+test: default test/runner.py
+	python test/runner.py

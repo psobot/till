@@ -49,3 +49,27 @@ func NewRackspaceProviderConfig(base BaseProviderConfig, data map[string]interfa
 
 	return &config, nil
 }
+
+type RackspaceProvider struct {
+	BaseProvider
+}
+
+func (c *RackspaceProviderConfig) NewProvider() (Provider, error) {
+	return &RackspaceProvider{BaseProvider{c}}, nil
+}
+
+func (p *RackspaceProvider) Get(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *RackspaceProvider) GetURL(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *RackspaceProvider) Put(o Object) (Object, error) {
+	return nil, nil
+}
+
+func (p *RackspaceProvider) Update(o Object) (Object, error) {
+	return nil, nil
+}

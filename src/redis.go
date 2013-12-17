@@ -80,3 +80,27 @@ func NewRedisProviderConfig(base BaseProviderConfig, data map[string]interface{}
 
 	return &config, nil
 }
+
+type RedisProvider struct {
+	BaseProvider
+}
+
+func (c *RedisProviderConfig) NewProvider() (Provider, error) {
+	return &RedisProvider{BaseProvider{c}}, nil
+}
+
+func (p *RedisProvider) Get(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *RedisProvider) GetURL(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *RedisProvider) Put(o Object) (Object, error) {
+	return nil, nil
+}
+
+func (p *RedisProvider) Update(o Object) (Object, error) {
+	return nil, nil
+}

@@ -1,6 +1,7 @@
 {
     "port": 12345,
     "bind": "127.0.0.1",
+    "default_timeout_seconds": 3600,
     "providers": [
         {
             "type": "redis",
@@ -18,8 +19,8 @@
             "name": "local_filesystem",
             
             "path": "/var/cache/till",
-            "maxsize": 1073741824,
-            "maxitems": 10000
+            "maxsize": 1024,
+            "maxitems": 4
         },
         {
             "type": "till",

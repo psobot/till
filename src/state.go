@@ -13,7 +13,8 @@ import (
  */
 
 type State struct {
-	Config Config `json:"config"`
+	Config    *Config    `json:"config"`
+	Providers []Provider `json:"providers"`
 
 	//  Redis pool stuff
 	pool    redis.Pool           `json:"-"`
@@ -39,7 +40,27 @@ func NewState() State {
 		listenersListen:   make(chan chan int),
 		listenerDelegates: make([]chan int, 0),
 	}
-	state.Config.ReadFromJSON("./config.json")
+	var err error
+
+	state.Config, err = NewConfigFromJSON("./config.json")
+	if err != nil {
+		log.Printf("Could not read config from JSON: %v", err)
+	}
+
+	for _, pc := range state.Config.Providers {
+		p, err := pc.NewProvider()
+		if err == nil && p != nil {
+			log.Printf("Instantiated provider: %v", p)
+			err = p.Connect()
+			if err != nil {
+				log.Printf("Could not conncet provider: %v, %v", p, err)
+			} else {
+				state.Providers = append(state.Providers, p)
+			}
+		} else {
+			log.Printf("Could not instantiate provider %v: %v", pc, err)
+		}
+	}
 
 	/*
 		state.pool = redis.Pool{
@@ -120,23 +141,26 @@ func (s *State) ListenForListenerChanges(onChange chan int) {
 
 func (s *State) Shutdown() {
 	log.Println("Shutting down.")
-	onCount := make(chan int)
-	s.GetListenerCount(onCount)
-	count := <-onCount
 
-	if count > 0 {
-		onChange := make(chan int)
-		s.ListenForListenerChanges(onChange)
-		log.Printf("Waiting for %d listeners to finish...", count)
-		for count = range onChange {
-			if count == 0 {
-				break
-			} else {
-				log.Printf("Waiting for %d listeners to finish...", count)
+	/*
+		onCount := make(chan int)
+		s.GetListenerCount(onCount)
+		count := <-onCount
+
+		if count > 0 {
+			onChange := make(chan int)
+			s.ListenForListenerChanges(onChange)
+			log.Printf("Waiting for %d listeners to finish...", count)
+			for count = range onChange {
+				if count == 0 {
+					break
+				} else {
+					log.Printf("Waiting for %d listeners to finish...", count)
+				}
 			}
 		}
-	}
 
-	log.Printf("No listeners connected. Exiting.")
+		log.Printf("No listeners connected. Exiting.")
+	*/
 	os.Exit(0)
 }

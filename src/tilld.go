@@ -18,107 +18,6 @@ import (
 
 var state State
 
-func statsEndpoint(writer http.ResponseWriter, r *http.Request) {
-	b, _ := json.Marshal(state)
-	writer.Write(b)
-}
-
-func streamEndpoint(writer http.ResponseWriter, r *http.Request) {
-	state.AddListener()
-	defer state.RemoveListener()
-
-	//uid_re := regexp.MustCompile(state.Config.StreamEndpointPattern)
-	/*
-		uids := uid_re.FindStringSubmatch(r.URL.Path)
-		if len(uids) > 1 {
-			uid := uids[1]
-			defer log.Printf("Finishing request for %s.", uid)
-
-			onConnection := make(chan redis.Conn)
-			state.GetRedisConn(onConnection)
-			c := <-onConnection
-			defer c.Close()
-
-			stream_key := fmt.Sprintf("stream:%s", uid)
-			finished_key := fmt.Sprintf("stream:%s:finished", uid)
-			expected_length_key := fmt.Sprintf("stream:%s:expected_length", uid)
-
-			log.Printf("Received listener for %s.", uid)
-
-			finished, _ := redis.String(c.Do("GET", finished_key))
-			if len(finished) == 0 {
-				//	The stream is still ongoing, or not yet started.
-				exists, _ := redis.Bool(c.Do("EXISTS", stream_key))
-				if exists {
-					log.Printf("Opened stream for %s.", uid)
-					//	Stream exists - let's read eagerly from it.
-
-					//	Before we start, is there an expected length?
-
-					send_ua := true
-					for _, ua_disallow := range state.Config.UAsWithNoContentLength {
-						if string, ok := ua_disallow.(string); ok {
-							if strings.Contains(r.UserAgent(), string) {
-								send_ua = false
-								break
-							}
-						}
-					}
-
-					if send_ua {
-						expected_length, err := redis.String(c.Do("GET", expected_length_key))
-						if err == nil {
-							log.Printf("Expected length set to %s bytes for %s.", expected_length, uid)
-							writer.Header().Set("Content-Length", expected_length)
-						} else {
-							log.Printf("Expected length not set for %s.", uid)
-						}
-					} else {
-						log.Printf("Not sending expected length for %s based on user agent.", uid)
-					}
-
-					read_elements := 0
-					read_bytes := 0
-
-					for {
-						if finished, _ := redis.Bool(c.Do("EXISTS", finished_key)); finished {
-							if llen, _ := redis.Int(c.Do("LLEN", stream_key)); llen == read_elements {
-								log.Printf("Finished reading from stream after reading %d elements.", read_elements)
-								break
-							}
-						} else if exists, _ := redis.Bool(c.Do("EXISTS", stream_key)); !exists {
-							log.Printf("Stream removed. Closing connection after reading %d elements.", read_elements)
-							break
-						}
-
-						reply, _ := redis.Values(c.Do("LRANGE", stream_key, read_elements, -1))
-						read_elements += len(reply)
-
-						for _, data := range reply {
-							if bytes, ok := data.([]byte); ok {
-								byte_count, _ := writer.Write(bytes)
-								read_bytes += byte_count
-							} else {
-								log.Printf("Data is not byte array: %v", data)
-							}
-						}
-
-						time.Sleep(time.Duration(state.Config.PollInterval) * time.Millisecond)
-					}
-					log.Printf("Ending stream for %s after sending %d bytes.", uid, read_bytes)
-				} else {
-					http.Error(writer, "This stream is not currently playing.", 404)
-				}
-			} else {
-				log.Printf("Redirecting stream listener to %s.", finished)
-				http.Redirect(writer, r, finished, 302)
-			}
-		} else {
-			http.Error(writer, "No UID match found.", 400)
-		}
-	*/
-}
-
 func main() {
 	logfile := "/var/log/streamer.log"
 	if nlogfile := os.Getenv("LOGFILE"); nlogfile != "" {
@@ -138,17 +37,20 @@ func main() {
 	}
 	log.SetPrefix("tilld ")
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Println("Starting tilld.")
-	rand.Seed(time.Now().UTC().UnixNano())
 
 	state = NewState()
+
+	log.Println("Starting tilld on port	", strconv.Itoa(state.Config.Port))
+	rand.Seed(time.Now().UTC().UnixNano())
 
 	usr1chan := make(chan os.Signal, 1)
 	signal.Notify(usr1chan, syscall.SIGUSR1)
 	go func() {
 		for _ = range usr1chan {
 			log.Printf("Reloading configuration from file.")
-			state.Config.ReadFromJSON("./config.json")
+
+			//	TODO: Make sure we do all the other re-jiggering here.
+			state.Config, _ = NewConfigFromJSON("./config.json")
 		}
 	}()
 
@@ -161,10 +63,121 @@ func main() {
 	}()
 
 	handler := &RegexpHandler{}
-	handler.HandleFunc(regexp.MustCompile("/stats\\.json"), statsEndpoint)
+	handler.HandleFunc(regexp.MustCompile("^/api/v1/stats$"), StatsEndpoint)
+	handler.HandleFunc(regexp.MustCompile("^/api/v1/object/"), ObjectGetPutEndpoint)
 
 	err := http.ListenAndServe(":"+strconv.Itoa(state.Config.Port), handler)
 	if err != nil {
 		log.Printf("ListenAndServe failed:", err)
 	}
+}
+
+func StatsEndpoint(writer http.ResponseWriter, r *http.Request) {
+	b, _ := json.Marshal(state)
+	writer.Write(b)
+}
+
+func ObjectGetPutEndpoint(writer http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		ObjectGetEndpoint(writer, r)
+	case "POST":
+		ObjectPostEndpoint(writer, r)
+	case "PUT":
+		ObjectPutEndpoint(writer, r)
+	default:
+		http.Error(writer, "Method not allowed.", 405)
+	}
+}
+
+func GetID(writer http.ResponseWriter, r *http.Request) *string {
+	id_re := regexp.MustCompile("^/api/v1/object/([a-zA-Z0-9_\\-.]+)$")
+	ids := id_re.FindStringSubmatch(r.URL.Path)
+	if len(ids) == 2 {
+		return &ids[1]
+	} else {
+		http.Error(writer, "Malformed object ID. Must match regex /[a-zA-Z0-9_\\-.]+/.", 400)
+		return nil
+	}
+}
+
+func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
+	id := GetID(writer, r)
+	if id != nil {
+		for _, p := range state.Providers {
+			if o, err := p.Get(*id); o != nil && err == nil {
+				size, err := o.GetSize()
+				if err == nil && size != -1 {
+					writer.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+				}
+				metadata := o.GetBaseObject().Metadata
+				if len(metadata) > 0 {
+					writer.Header().Set("X-Till-Metadata", metadata)
+				}
+
+				for {
+					data, err := o.Read(4096)
+					if len(data) == 0 || err != nil {
+						break
+					} else {
+						writer.Write(data)
+					}
+				}
+				return
+			}
+		}
+		http.Error(writer, "Failed to find object.", 404)
+	}
+}
+
+func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	var lifespan float64
+
+	lifespan_s := r.Header.Get("X-Till-Lifespan")
+	if len(lifespan_s) > 0 {
+		if lifespan_s == "default" {
+			//	TODO
+		} else {
+			var err error
+			lifespan, err = strconv.ParseFloat(lifespan_s, 64)
+			if err != nil || lifespan < 0 {
+				http.Error(writer, "\"X-Till-Lifespan header is not a positive number or \\\"default\\\".\"", 400)
+				return
+			}
+		}
+	} else {
+		http.Error(writer, "\"X-Till-Lifespan header must be provided.", 400)
+		return
+	}
+
+	id := GetID(writer, r)
+
+	if id != nil {
+		obj := UploadObject{
+			BaseObject: BaseObject{
+				exists:     false,
+				identifier: *id,
+				provider:   nil,
+
+				Expires:  now.Add(time.Duration(lifespan) * time.Second).Unix(),
+				Metadata: r.Header.Get("X-Till-Metadata"),
+			},
+			reader: r.Body,
+			size:   r.ContentLength,
+		}
+
+		//	TODO: Implement X-Till-Synchronous logic here.
+		for _, p := range state.Providers {
+			_, err := p.Put(&obj)
+			if err != nil {
+				log.Printf("Error while saving file to %v: %v", p, err)
+			}
+		}
+		writer.WriteHeader(201)
+	}
+}
+
+func ObjectPutEndpoint(writer http.ResponseWriter, r *http.Request) {
+	writer.Write([]byte("put"))
 }

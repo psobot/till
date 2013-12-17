@@ -58,3 +58,27 @@ func NewTillProviderConfig(base BaseProviderConfig, data map[string]interface{})
 
 	return &config, nil
 }
+
+type TillProvider struct {
+	BaseProvider
+}
+
+func (c *TillProviderConfig) NewProvider() (Provider, error) {
+	return &TillProvider{BaseProvider{c}}, nil
+}
+
+func (p *TillProvider) Get(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *TillProvider) GetURL(id string) (Object, error) {
+	return nil, nil
+}
+
+func (p *TillProvider) Put(o Object) (Object, error) {
+	return nil, nil
+}
+
+func (p *TillProvider) Update(o Object) (Object, error) {
+	return nil, nil
+}
