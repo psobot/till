@@ -11,7 +11,7 @@
             "port": 6379,
             "db":   0,
             
-            "maxitems": 10000
+            "maxitems": 50
         },
         {
             "type": "file",

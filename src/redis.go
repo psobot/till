@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"github.com/garyburd/redigo/redis"
+	"log"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,8 +17,7 @@ type RedisProviderConfig struct {
 	Database int    `json:"db"`
 	Password string `json:"password"`
 
-	MaxSize  int64 `json:"maxsize"`
-	MaxItems int64 `json:"maxitems"`
+	MaxItems int `json:"maxitems"`
 }
 
 func NewRedisProviderConfig(base BaseProviderConfig, data map[string]interface{}) (*RedisProviderConfig, error) {
@@ -68,25 +69,13 @@ func NewRedisProviderConfig(base BaseProviderConfig, data map[string]interface{}
 		config.Password = ""
 	}
 
-	maxsize, ok := data["maxsize"]
-	if ok {
-		maxsize, ok = maxsize.(float64)
-		if !ok {
-			return nil, errors.New("Redis maxsize must be a number.")
-		} else {
-			config.MaxSize = int64(maxsize.(float64))
-		}
-	} else {
-		config.MaxSize = 0
-	}
-
 	maxitems, ok := data["maxitems"]
 	if ok {
 		maxitems, ok = maxitems.(float64)
 		if !ok {
 			return nil, errors.New("Redis maxitems must be a number.")
 		} else {
-			config.MaxItems = int64(maxitems.(float64))
+			config.MaxItems = int(maxitems.(float64))
 		}
 	} else {
 		config.MaxItems = 0
@@ -98,10 +87,12 @@ func NewRedisProviderConfig(base BaseProviderConfig, data map[string]interface{}
 type RedisProvider struct {
 	BaseProvider
 
-	pool redis.Pool
+	pool                 redis.Pool
+	countScript          *redis.Script
+	randomValueKeyScript *redis.Script
 }
 
-func (c *RedisProviderConfig) NewProvider() (Provider, error) {
+func (c RedisProviderConfig) NewProvider() (Provider, error) {
 	p := &RedisProvider{
 		BaseProvider: BaseProvider{c},
 	}
@@ -132,7 +123,20 @@ func (c *RedisProviderConfig) NewProvider() (Provider, error) {
 			return err
 		},
 	}
+	p.countScript = redis.NewScript(0, `return #redis.call('keys', '::till:value:*')`)
+	p.randomValueKeyScript = redis.NewScript(0, `
+		local keys = redis.call('keys', '::till:value:*')
+if #keys > 0 then
+    return keys[1]
+else
+    return nil
+end
+	`)
 	return p, nil
+}
+
+func (p *RedisProvider) GetConfig() RedisProviderConfig {
+	return p.config.(RedisProviderConfig)
 }
 
 func (p *RedisProvider) KeyForObject(key string) string {
@@ -141,6 +145,10 @@ func (p *RedisProvider) KeyForObject(key string) string {
 
 func (p *RedisProvider) KeyForMetadata(key string) string {
 	return "::till:metadata:" + key
+}
+
+func (p *RedisProvider) GetObjectCount(c redis.Conn) (int, error) {
+	return redis.Int(p.countScript.Do(c))
 }
 
 func (p *RedisProvider) Get(id string) (Object, error) {
@@ -170,11 +178,40 @@ func (p *RedisProvider) GetURL(id string) (Object, error) {
 	return nil, nil
 }
 
-func (p *RedisProvider) Put(o Object) (Object, error) {
-	//	TODO: ensure here that we don't exceed the maximum number of items.
+func (p *RedisProvider) RemoveOldest(c redis.Conn) {
+	keyb, err := redis.String(p.randomValueKeyScript.Do(c))
+	if err != nil {
+		log.Printf("Error: %v", err)
+	} else {
+		key := string(keyb)
+		id := strings.Replace(key, "::till:value:", "", 1)
 
+		_, err := c.Do("DEL", p.KeyForMetadata(id), p.KeyForObject(id))
+		if err != nil {
+			log.Printf("Could not remove keys for object %v: %v", id, err)
+		}
+	}
+}
+
+func (p *RedisProvider) Put(o Object) (Object, error) {
 	c := p.pool.Get()
 	defer c.Close()
+
+	maxItems := p.GetConfig().MaxItems
+	if maxItems > 0 {
+		for {
+			count, err := p.GetObjectCount(c)
+			if err != nil {
+				return nil, err
+			} else {
+				if count+1 > maxItems {
+					p.RemoveOldest(c)
+				} else {
+					break
+				}
+			}
+		}
+	}
 
 	now := time.Now().Unix()
 	bo := o.GetBaseObject()

@@ -210,7 +210,8 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 					}
 				}()
 			} else {
-				o, err := p.Put(&obj)
+				var o Object
+				o, err = p.Put(&obj)
 				if o != nil {
 					defer o.Close()
 				}
