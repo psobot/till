@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	//"fmt"
 
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -38,9 +39,10 @@ func main() {
 	log.SetPrefix("tilld ")
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 
+	log.Printf("Initializing tilld...")
+
 	state = NewState()
 
-	log.Println("Starting tilld on port	", strconv.Itoa(state.Config.Port))
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	usr1chan := make(chan os.Signal, 1)
@@ -66,6 +68,7 @@ func main() {
 	handler.HandleFunc(regexp.MustCompile("^/api/v1/stats$"), StatsEndpoint)
 	handler.HandleFunc(regexp.MustCompile("^/api/v1/object/"), ObjectGetPutEndpoint)
 
+	log.Printf("Starting tilld (pid %d) on port %d. Send SIGUSR1 to reload config.", os.Getpid(), state.Config.Port)
 	err := http.ListenAndServe(":"+strconv.Itoa(state.Config.Port), handler)
 	if err != nil {
 		log.Printf("ListenAndServe failed:", err)
@@ -117,17 +120,16 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 					writer.Header().Set("X-Till-Metadata", metadata)
 				}
 
+				data := make([]byte, 4096)
 				for {
-					read := 4096
-
-					data, err := o.Read(read)
-					if len(data) == 0 || err != nil {
+					length, err := o.Read(data)
+					if length == 0 || (err != nil && err != io.EOF) {
 						break
 					} else {
-						writer.Write(data)
+						writer.Write(data[0:length])
 					}
 
-					if len(data) < read {
+					if err == io.EOF {
 						break
 					}
 				}
@@ -162,19 +164,16 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 	id := GetID(writer, r)
 
 	if id != nil {
-		obj := UploadObject{
-			BaseObject: BaseObject{
-				exists:     false,
-				identifier: *id,
-				provider:   nil,
+		buf := NewFullyBufferedReader(r.Body)
 
-				Expires:  now.Add(time.Duration(lifespan) * time.Second).Unix(),
-				Metadata: r.Header.Get("X-Till-Metadata"),
-			},
-			reader: r.Body,
-			size:   r.ContentLength,
+		bo := BaseObject{
+			exists:     false,
+			identifier: *id,
+			provider:   nil,
+
+			Expires:  now.Add(time.Duration(lifespan) * time.Second).Unix(),
+			Metadata: r.Header.Get("X-Till-Metadata"),
 		}
-		defer obj.Close()
 
 		//	TODO: Implement X-Till-Synchronous logic here.
 		var synchronous bool
@@ -195,42 +194,71 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 
 		//	TODO: Dispatch to all providers should happen at once, not sequentially.
 		//	TODO: Dispatch to each provider should have a timeout associated with it.
-		async := false
-		success := false
+		was_timeout := false
+
+		timeout := 1000 // msec
+		dispatched := 0
+		received := 0
+		successful := 0
+		result := make(chan *Object)
+
 		for _, p := range state.Providers {
-			var err error
-			if async {
-				go func() {
-					o, err := p.Put(&obj)
-					if o != nil {
-						defer o.Close()
-					}
-					if err != nil {
-						log.Printf("Error while asynchronously saving object to %v: %v", p, err)
-					}
-				}()
-			} else {
-				var o Object
-				o, err = p.Put(&obj)
+			//	TODO: Logic for conditionally dispatching to one or more providers should go here.
+			go SaveObject(p, bo, buf, r.ContentLength, result)
+			dispatched++
+		}
+
+		endtime := time.Now().Add(time.Duration(timeout) * time.Millisecond)
+	Join:
+		for {
+			select {
+			case o := <-result:
+				received++
 				if o != nil {
-					defer o.Close()
+					successful++
+
+					if !synchronous || received == dispatched {
+						break Join
+					}
 				}
-			}
-			if err != nil {
-				log.Printf("Error while saving object to %v: %v", p, err)
-			} else {
-				success = true
-				async = !synchronous
+
+			case <-time.After(endtime.Sub(time.Now())):
+				if synchronous {
+					log.Printf("Timeout exceeded when posting object %s.", *id)
+					was_timeout = true
+				}
+				break Join
 			}
 		}
 
-		if success && async {
+		if successful > 0 && (!synchronous || successful < dispatched) {
 			writer.WriteHeader(202)
-		} else if success { // && !async
+		} else if successful > 0 { // && synchronous
 			writer.WriteHeader(201)
-		} else { // !success && !async
+		} else if was_timeout {
+			writer.WriteHeader(504)
+		} else {
 			writer.WriteHeader(502)
-		} // TODO: Implement 504
+		}
+	}
+}
+
+func SaveObject(p Provider, bo BaseObject, buf *FullyBufferedReader, size int64, result chan *Object) {
+	obj := UploadObject{
+		BaseObject: bo,
+		reader:     buf.Reader(),
+		size:       size,
+	}
+	defer obj.Close()
+	o, err := p.Put(&obj)
+	if err != nil {
+		log.Printf("Error saving object %v to %v: %v", bo.identifier, p, err)
+		result <- nil
+		if o != nil {
+			o.Close()
+		}
+	} else {
+		result <- &o
 	}
 }
 

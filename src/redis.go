@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"github.com/garyburd/redigo/redis"
+	"io"
 	"log"
 	"strconv"
 	"strings"
@@ -237,8 +238,8 @@ func (p *RedisProvider) Put(o Object) (Object, error) {
 	_, err = c.Do(
 		"SETEX",
 		p.KeyForMetadata(bo.identifier),
-		o.GetBaseObject().Metadata,
 		expires,
+		o.GetBaseObject().Metadata,
 	)
 	if err != nil {
 		return nil, err
@@ -247,8 +248,12 @@ func (p *RedisProvider) Put(o Object) (Object, error) {
 		if err != nil {
 			return nil, err
 		}
-		data, err := o.Read(int(length))
-		if err != nil {
+
+		//	TODO: not this
+		data := make([]byte, length)
+
+		_, err = o.Read(data)
+		if err != nil && err != io.EOF {
 			return nil, err
 		}
 
@@ -323,7 +328,7 @@ func (r *RedisObject) GetSize() (int64, error) {
 	}
 }
 
-func (r *RedisObject) Read(length int) ([]byte, error) {
+func (r *RedisObject) ReadBytes(length int) ([]byte, error) {
 	data, err := redis.Bytes(r.c.Do("GETRANGE", r.objectKey, r.tell, r.tell+length-1))
 	r.tell += len(data)
 	if err != nil {
@@ -333,6 +338,6 @@ func (r *RedisObject) Read(length int) ([]byte, error) {
 	}
 }
 
-func (r *RedisObject) Close() {
-	r.c.Close()
+func (r *RedisObject) Close() error {
+	return r.c.Close()
 }

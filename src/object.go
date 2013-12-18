@@ -9,8 +9,8 @@ type Object interface {
 	GetBaseObject() BaseObject
 
 	GetSize() (int64, error)
-	Read(length int) ([]byte, error)
-	Close()
+	Read([]byte) (int, error)
+	Close() error
 }
 
 type BaseObject struct {
@@ -44,12 +44,8 @@ func (b *BaseObject) GetSize() (int64, error) {
 	return -1, nil
 }
 
-func (b *BaseObject) Read(length int) ([]byte, error) {
-	return []byte{}, nil
-}
-
-func (b *BaseObject) Close() {
-
+func (b *BaseObject) Read(by []byte) (int, error) {
+	return -1, nil
 }
 
 type UploadObject struct {
@@ -63,12 +59,11 @@ func (b *UploadObject) GetSize() (int64, error) {
 	return b.size, nil
 }
 
-func (b *UploadObject) Read(length int) ([]byte, error) {
-	buf := make([]byte, length)
-	len, err := b.reader.Read(buf)
-	if err != nil {
-		return []byte{}, err
-	} else {
-		return buf[:len], nil
-	}
+func (b *UploadObject) Read(by []byte) (int, error) {
+	length, err := b.reader.Read(by)
+	return length, err
+}
+
+func (b *UploadObject) Close() error {
+	return b.reader.Close()
 }

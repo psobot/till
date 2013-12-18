@@ -19,12 +19,20 @@ Till is used for **immutable, time-limited** cache data. It is recommended that 
 
 Till is very much a work in progress and is currently only used by [the Wub Machine](http://the.wubmachine.com) to manage upload caches. It has **no authorization control** on its inputs - so should be firewalled on your internal network, or only served locally on one host.
 
+
 `tilld`, the binary that imlpements the Till server, will bind to port `5632` on `127.0.0.1` by default. This port can be overridden via the config file (`/var/till/till.config.json`) or the command line option `--port`/`-p`.
 
-
-`tilld` command line
+TODO
 ---
-    tilld
+
+Many things:
+
+ - GetURL methods internally
+ - Optimizations
+ - Per-provider default TTLs
+ - The entire tilld-to-tilld propagation system
+ - Distributing objects across tilld servers
+ - `select`ing on multiple Get requests and cancelling them once the first one comes back
     
 
 
@@ -179,11 +187,11 @@ Configuration
                 "type": "s3",
                 "name": "my_preferred_bucket",
                 
-                "aws_user_name": "username",
                 "aws_access_key_id": "key",
                 "aws_secret_access_key": "key",
                 "aws_s3_bucket": "com.example.mybucket",
-                "aws_s3_path": "optional/path/"   
+                "aws_s3_path": "optional/path/",
+                "aws_s3_storage_class": "REDUCED_REDUNDANCY"
             },
             {
                 "type": "rackspace",
@@ -191,7 +199,8 @@ Configuration
                 
                 "rackspace_user_name": "username",
                 "rackspace_api_key": "key",
-                "rackspace_region": "key"      
+                "rackspace_region": "key",
+                "rackspace_path": "optional/path/"
             }
         ]
     }
@@ -205,4 +214,25 @@ Notes about the Till configuration:
      - Other nearby Till servers, starting with `123.123.123.123`. If `123.123.123.123` knows about other Till servers, they will be queried as well - in order of their registration.
      - S3, in `com.example.mybucket`, with the given credentials.
      - Rackspace Cloud Files.
+     
+Providers
+---
+
+###Redis
+
+The Redis provider allows a bounded number of files to be cached in a Redis database. (Size-bounded Redis storage is currently not implemented.) The Redis provider has a number of unique properties:
+
+ - When the item limit is reached and a new item is added to the cache, the Redis provider will expire an item at random to make room.
+ 
+###Filesystem
+
+The filesystem provider allows for a bounded number (or size) of files to be cached on a mounted filesystem at a given path. Metadata and expiry information is stored in JSON format in a separate `metadata` folder within the given path, while the object data itself is stored within a `files` folder.
+
+###S3
+
+The S3 provider allows for an unbounded number of files to be cached in Amazon S3. As S3 only allows for item expiration on a per-bucket basis, rather than a per-item basis, the `X-Till-Lifespan` header does not have any effect on an S3 provider. Instead, the item expiration **must be set manually** on the S3 bucket used with Till - otherwise, the cached items will remain indefinitely.
+
+###Rackspace
+
+The S3 provider allows for an unbounded number of files to be cached in Rackspace Cloud Files.
      

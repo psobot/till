@@ -30,6 +30,10 @@ type BaseProvider struct {
 	config ProviderConfig
 }
 
+func (b *BaseProvider) String() string {
+	return "{" + b.config.Type() + " provider: " + b.config.Name() + "}"
+}
+
 func (b *BaseProvider) GetConfig() ProviderConfig {
 	return b.config
 }

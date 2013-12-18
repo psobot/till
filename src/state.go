@@ -50,41 +50,17 @@ func NewState() State {
 	for _, pc := range state.Config.Providers {
 		p, err := pc.NewProvider()
 		if err == nil && p != nil {
-			log.Printf("Instantiated provider: %v", p)
+			log.Printf("Setting up %v provider \"%v\"", pc.Type(), pc.Name())
 			err = p.Connect()
 			if err != nil {
-				log.Printf("Could not connect provider: %v, %v", p, err)
+				log.Printf("Could not connect %v provider \"%v\": %v", pc.Type(), pc.Name(), err)
 			} else {
 				state.Providers = append(state.Providers, p)
 			}
 		} else {
-			log.Printf("Could not instantiate provider %v: %v", pc, err)
+			log.Printf("Could not instantiate %v provider \"%v\": %v", pc.Type(), pc.Name(), err)
 		}
 	}
-
-	/*
-		state.pool = redis.Pool{
-			MaxIdle:     10,
-			IdleTimeout: 240 * time.Second,
-			Dial: func() (redis.Conn, error) {
-				c, err := redis.Dial("tcp", state.Config.RedisHostPort)
-				if err != nil {
-					return nil, err
-				}
-				if _, err := c.Do("AUTH", state.Config.RedisPassword); err != nil {
-					c.Close()
-					return nil, err
-				}
-				return c, err
-			},
-			TestOnBorrow: func(c redis.Conn, t time.Time) error {
-				_, err := c.Do("PING")
-				return err
-			},
-		}
-		go state.DispenseConnections()
-		go state.TallyListeners()
-	*/
 	return state
 }
 

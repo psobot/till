@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -110,7 +111,6 @@ func (p *FileProvider) Connect() error {
 
 func (p *FileProvider) StartExpiryLoop() {
 	d, err := os.Open(p.GetFilePath(""))
-	log.Printf("Dir %v", d)
 	if err != nil {
 		log.Fatalf("Error in expiry loop: %v", err)
 		return
@@ -123,7 +123,6 @@ func (p *FileProvider) StartExpiryLoop() {
 	}
 
 	for _, fi := range fi {
-		log.Printf("File %v", fi)
 		if fi.Mode().IsRegular() {
 			o, err := p.LoadMetadata(fi.Name())
 			if err != nil {
@@ -400,12 +399,17 @@ func (p *FileProvider) Put(o Object) (Object, error) {
 				BaseObject: o.GetBaseObject(),
 				File:       file,
 			}
+			data := make([]byte, 4096)
 			for {
-				data, err := o.Read(4096)
-				if len(data) == 0 || err != nil {
+				length, err := o.Read(data)
+				if length == 0 || (err != nil && err != io.EOF) {
 					break
 				} else {
-					file.Write(data)
+					file.Write(data[0:length])
+				}
+
+				if err == io.EOF {
+					break
 				}
 			}
 
@@ -478,16 +482,14 @@ func (f *FileObject) GetSize() (int64, error) {
 	}
 }
 
-func (f *FileObject) Read(length int) ([]byte, error) {
-	buf := make([]byte, length)
-	len, err := f.File.Read(buf)
-	if err != nil {
-		return []byte{}, err
-	} else {
-		return buf[:len], nil
-	}
+func (f *FileObject) Read(buf []byte) (int, error) {
+	return f.File.Read(buf)
 }
 
-func (f *FileObject) Close() {
-	f.File.Close()
+func (f *FileObject) Close() error {
+	if f.File == nil {
+		return nil
+	} else {
+		return f.File.Close()
+	}
 }
