@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/garyburd/redigo/redis"
+	"errors"
+	"github.com/nu7hatch/gouuid"
 	"log"
 	"os"
 	"sync"
-	//"time"
+	"time"
 )
 
 /*
@@ -13,130 +14,133 @@ import (
  */
 
 type State struct {
-	Config    *Config    `json:"config"`
-	Providers []Provider `json:"providers"`
-
-	//  Redis pool stuff
-	pool    redis.Pool           `json:"-"`
-	connGet chan chan redis.Conn `json:"-"`
-
-	listenersGet    chan chan int `json:"-"`
-	listenersAdd    chan int      `json:"-"`
-	listenersRemove chan int      `json:"-"`
-	listenersListen chan chan int
-
-	CurrentListeners  int `json:"-"`
-	listenerDelegates []chan int
+	Config     *Config             `json:"config"`
+	Providers  map[string]Provider `json:"providers"`
+	Servers    map[string]Server   `json:"servers"`
+	Identifier string              `json:"identifier"`
+	Server     Server              `json:"server"`
 
 	metadataMutex sync.RWMutex `json:"-"`
 }
 
 func NewState() State {
-	state = State{
-		connGet:           make(chan chan redis.Conn),
-		listenersGet:      make(chan chan int),
-		listenersAdd:      make(chan int),
-		listenersRemove:   make(chan int),
-		listenersListen:   make(chan chan int),
-		listenerDelegates: make([]chan int, 0),
-	}
+	u, _ := uuid.NewV4()
+	return InitStateConfig(State{
+		Servers:    make(map[string]Server),
+		Identifier: u.String(),
+	})
+}
+
+func InitStateConfig(state State) State {
 	var err error
 
-	state.Config, err = NewConfigFromJSON("./config.json")
+	provided_config := os.Getenv("TILL_CONFIG")
+	if provided_config == "" {
+		config_file := os.Getenv("TILL_CONFIG_FILE")
+		if config_file == "" {
+			state.Config, err = NewConfigFromJSONFile("./config.json")
+		} else {
+			state.Config, err = NewConfigFromJSONFile(config_file)
+		}
+	} else {
+		state.Config, err = NewConfigFromJSON([]byte(provided_config))
+	}
+
 	if err != nil {
 		log.Printf("Could not read config from JSON: %v", err)
 	}
 
+	providers := make(map[string]Provider)
 	for _, pc := range state.Config.Providers {
 		p, err := pc.NewProvider()
 		if err == nil && p != nil {
-			log.Printf("Setting up %v provider \"%v\"", pc.Type(), pc.Name())
-			err = p.Connect()
-			if err != nil {
-				log.Printf("Could not connect %v provider \"%v\": %v", pc.Type(), pc.Name(), err)
+			if _, exists := providers[pc.Name()]; exists {
+				log.Printf("WARNING: Multiple providers exist with the same name (\"%v\"). Latter providers will not be used.", pc.Name())
 			} else {
-				state.Providers = append(state.Providers, p)
+				log.Printf("Setting up %v provider \"%v\"...", pc.Type(), pc.Name())
+				err = p.Connect()
+				if err != nil {
+					log.Printf("Could not connect %v provider \"%v\": %v", pc.Type(), pc.Name(), err)
+				} else {
+					providers[pc.Name()] = p
+				}
 			}
 		} else {
 			log.Printf("Could not instantiate %v provider \"%v\": %v", pc.Type(), pc.Name(), err)
 		}
 	}
+
+	state.Providers = providers
+	state.Server = NewServer(state.Identifier, state.Config.PublicAddress, 60)
 	return state
 }
 
-func (s *State) DispenseConnections() {
-	for callback := range s.connGet {
-		callback <- s.pool.Get()
+func (s *State) AddServer(server Server) error {
+	if server.Identifier == "" {
+		panic("Server identifier cannot be empty!")
+	} else if server.Identifier == state.Identifier {
+		log.Printf("Not adding self to server list.")
+		return errors.New("Not adding self to server list.")
+	}
+
+	exists := false
+
+	s.metadataMutex.Lock()
+	if _, exists = s.Servers[server.Identifier]; !exists {
+		s.Servers[server.Identifier] = server
+	}
+	count := len(s.Servers)
+	s.metadataMutex.Unlock()
+
+	if !exists {
+		log.Printf("Added server '%v'. Now at %d known till servers.", server.Identifier, count)
+		return nil
+	} else {
+		log.Printf("Not re-adding server '%v'. Still at %d known till servers.", server.Identifier, count)
+		return errors.New("Not re-adding to server list.")
 	}
 }
 
-func (s *State) TallyListeners() {
-	for {
-		select {
-		case request := <-s.listenersGet:
-			request <- s.CurrentListeners
-		case inc := <-s.listenersAdd:
-			s.CurrentListeners += inc
-			for _, delegate := range s.listenerDelegates {
-				if delegate != nil {
-					delegate <- s.CurrentListeners
-				}
-			}
-		case dec := <-s.listenersRemove:
-			s.CurrentListeners -= dec
-			for _, delegate := range s.listenerDelegates {
-				if delegate != nil {
-					delegate <- s.CurrentListeners
-				}
-			}
-		case delegate := <-s.listenersListen:
-			s.listenerDelegates = append(s.listenerDelegates, delegate)
+func (s *State) RemoveServerByID(id string) {
+	s.metadataMutex.Lock()
+	defer s.metadataMutex.Unlock()
+
+	delete(s.Servers, id)
+}
+
+func (s *State) RemoveServerByAddr(addr string) {
+	s.metadataMutex.Lock()
+	defer s.metadataMutex.Unlock()
+
+	for _, server := range s.Servers {
+		if server.Address == addr {
+			delete(s.Servers, server.Identifier)
+			return
 		}
 	}
 }
 
-func (s *State) GetRedisConn(onConnection chan redis.Conn) {
-	s.connGet <- onConnection
+/*
+ *	Server
+ */
+
+type Server struct {
+	Identifier string
+	Address    string
+	Lifespan   int64
+
+	added_at time.Time
 }
 
-func (s *State) GetListenerCount(onCount chan int) {
-	s.listenersGet <- onCount
+func NewServer(id string, addr string, lifespan int64) Server {
+	return Server{
+		Identifier: id,
+		Address:    addr,
+		Lifespan:   lifespan,
+		added_at:   time.Now(),
+	}
 }
 
-func (s *State) AddListener() {
-	s.listenersAdd <- 1
-}
-
-func (s *State) RemoveListener() {
-	s.listenersRemove <- 1
-}
-
-func (s *State) ListenForListenerChanges(onChange chan int) {
-	s.listenersListen <- onChange
-}
-
-func (s *State) Shutdown() {
-	log.Println("Shutting down.")
-
-	/*
-		onCount := make(chan int)
-		s.GetListenerCount(onCount)
-		count := <-onCount
-
-		if count > 0 {
-			onChange := make(chan int)
-			s.ListenForListenerChanges(onChange)
-			log.Printf("Waiting for %d listeners to finish...", count)
-			for count = range onChange {
-				if count == 0 {
-					break
-				} else {
-					log.Printf("Waiting for %d listeners to finish...", count)
-				}
-			}
-		}
-
-		log.Printf("No listeners connected. Exiting.")
-	*/
-	os.Exit(0)
+func (s *Server) IsExpired() bool {
+	return int64(time.Now().Sub(s.added_at)/time.Second) > s.Lifespan
 }

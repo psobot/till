@@ -98,11 +98,13 @@ func (p *FileProvider) GetConfig() FileProviderConfig {
 func (p *FileProvider) Connect() error {
 	e := os.MkdirAll(p.GetMetadataPath(""), os.ModeDir|os.ModePerm)
 	if e != nil {
+		log.Printf("Could not make dir '%v': %v", p.GetMetadataPath(""), e)
 		return e
 	}
 
-	e = os.MkdirAll(p.GetMetadataPath(""), os.ModeDir|os.ModePerm)
+	e = os.MkdirAll(p.GetFilePath(""), os.ModeDir|os.ModePerm)
 	if e != nil {
+		log.Printf("Could not make dir '%v': %v", p.GetFilePath(""), e)
 		return e
 	}
 	go p.StartExpiryLoop()
@@ -112,13 +114,13 @@ func (p *FileProvider) Connect() error {
 func (p *FileProvider) StartExpiryLoop() {
 	d, err := os.Open(p.GetFilePath(""))
 	if err != nil {
-		log.Fatalf("Error in expiry loop: %v", err)
+		log.Printf("Error in expiry loop: %v", err)
 		return
 	}
 
 	fi, err := d.Readdir(-1)
 	if err != nil {
-		log.Fatalf("Error in expiry loop: %v", err)
+		log.Printf("Error in expiry loop: %v", err)
 		return
 	}
 
@@ -174,6 +176,7 @@ func (p *FileProvider) StartExpiryLoop() {
 					if p.currentSize < maxSize {
 						break
 					} else {
+						log.Printf("Removing oldest item - max size %d exceeded by %d.", maxSize, p.currentSize)
 						p.RemoveOldest()
 					}
 				}
@@ -201,7 +204,7 @@ func (p *FileProvider) NextSleepDuration() time.Duration {
 			return (time.Duration(secs) * time.Second)
 		} else {
 			log.Printf("Warning: timeout set in past: %d", secs)
-			return 60 * time.Second
+			return 0
 		}
 	} else {
 		return 60 * 60 * time.Second
@@ -335,8 +338,10 @@ func (p *FileProvider) SaveMetadata(o FileObject) error {
 			l, err := f.Write(data)
 			if err != nil || l < len(data) {
 				os.Remove(metadataPath)
+				f.Close()
 				return err
 			} else {
+				f.Close()
 				return nil
 			}
 		}
@@ -364,11 +369,18 @@ func (p *FileProvider) LoadMetadata(id string) (*FileObject, error) {
 
 func (p *FileProvider) Get(id string) (Object, error) {
 	file, err := os.Open(p.GetFilePath(id))
-	if err != nil {
-		return nil, err
+	if err != nil || file == nil {
+		if file != nil {
+			file.Close()
+		}
+		if os.IsNotExist(err) {
+			return nil, nil
+		} else {
+			return nil, err
+		}
 	} else {
 		obj, err := p.LoadMetadata(id)
-		if err != nil {
+		if err != nil || file == nil {
 			return nil, err
 		} else {
 			obj.File = file
@@ -388,6 +400,9 @@ func (p *FileProvider) Put(o Object) (Object, error) {
 		return p.Update(o)
 	} else {
 		file, err := os.OpenFile(objectPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0666)
+		if file != nil {
+			defer file.Close()
+		}
 		if err != nil {
 			if os.IsExist(err) {
 				return p.Update(o)
@@ -418,18 +433,12 @@ func (p *FileProvider) Put(o Object) (Object, error) {
 				return nil, err
 			}
 
-			err = file.Close()
+			err = p.SaveMetadata(fo)
 			if err != nil {
-				os.Remove(file.Name())
 				return nil, err
 			} else {
-				err = p.SaveMetadata(fo)
-				if err != nil {
-					return nil, err
-				} else {
-					p.add <- &fo
-					return &fo, nil
-				}
+				p.add <- &fo
+				return &fo, nil
 			}
 		}
 	}

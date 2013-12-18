@@ -70,6 +70,9 @@ func NewS3ProviderConfig(base BaseProviderConfig, data map[string]interface{}) (
 		if !ok {
 			return nil, errors.New("aws_s3_storage_class must be a string.")
 		}
+		if config.AWSS3StorageClass != "REDUCED_REDUNDANCY" && config.AWSS3StorageClass != "STANDARD" {
+			log.Printf("WARNING: aws_s3_storage_class is not 'REDUCED_REDUNDANCY' or 'STANDARD'. Undefined behaviour may result.")
+		}
 	} else {
 		config.AWSS3StorageClass = "REDUCED_REDUNDANCY"
 	}
@@ -121,6 +124,7 @@ func (p *S3Provider) GetConfig() S3ProviderConfig {
 }
 
 func (p *S3Provider) Get(id string) (Object, error) {
+	panic("nope")
 	path := p.GetConfig().AWSS3Path + id
 	req := &S3Request{
 		bucket: p.bucket.Name,
@@ -153,6 +157,7 @@ func (p *S3Provider) GetURL(id string) (Object, error) {
 }
 
 func (p *S3Provider) Put(o Object) (Object, error) {
+	panic("nope")
 	path := p.GetConfig().AWSS3Path + o.GetBaseObject().identifier
 	size, err := o.GetSize()
 

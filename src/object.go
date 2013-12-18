@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 )
 
@@ -41,10 +42,12 @@ func (b *BaseObject) GetProvider() Provider {
 }
 
 func (b *BaseObject) GetSize() (int64, error) {
+	panic(errors.New("GetSize(b) not implemented on BaseObject."))
 	return -1, nil
 }
 
 func (b *BaseObject) Read(by []byte) (int, error) {
+	panic(errors.New("Read(b []byte) not implemented on BaseObject."))
 	return -1, nil
 }
 

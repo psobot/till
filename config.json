@@ -1,7 +1,10 @@
 {
     "port": 12345,
     "bind": "127.0.0.1",
-    "default_timeout_seconds": 3600,
+    "default_lifespan": 3600,
+    "lifespan_patterns": {
+        ".*\\.json": 60
+    },
     "providers": [
         {
             "type": "redis",
@@ -36,19 +39,20 @@
             "type": "s3",
             "name": "my_preferred_bucket",
             
-            "aws_user_name": "username",
-            "aws_access_key_id": "key_id",
-            "aws_secret_access_key": "key_secret",
-            "aws_s3_bucket": "com.example.mybucket",
-            "aws_s3_path": "optional/path/"   
+            "aws_access_key_id": "key",
+            "aws_secret_access_key": "key",
+            "aws_s3_bucket": "com.example",
+            "aws_s3_path": "optional/path/",
+            "aws_s3_storage_class": "REDUCED_REDUNDANCY"
         },
         {
             "type": "rackspace",
             "name": "my_preferred_rackspace",
-            
             "rackspace_user_name": "username",
-            "rackspace_api_key": "key",
-            "rackspace_region": "ATL"      
+            "rackspace_api_key": "apikey",
+            "rackspace_container": "container",
+            "rackspace_path": "optional/path/",
+            "rackspace_region": "ORD"      
         }
     ]
 }

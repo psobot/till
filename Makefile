@@ -1,9 +1,9 @@
-default: $(wildcard src/*.go)
+bin/tilld: $(wildcard src/*.go)
 	mkdir -p bin
 	go build -o bin/tilld $(wildcard src/*.go)
 
-run: default
+run: bin/tilld
 	./bin/tilld
 
-test: default test/runner.py
+test: bin/tilld test/runner.py
 	python test/runner.py

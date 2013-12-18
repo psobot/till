@@ -5,15 +5,25 @@ by Peter Sobot (@psobot)
 
 ----
 
-Till is a cache server for immutable, time-limited block storage. It provides a simple interface via HTTP to put and get binary blobs, and supports the following storage providers:
+Till is a cache server for immutable, time-limited object storage. It provides a simple interface via HTTP to put and get binary blobs and up to 4kB of metadata. Till smoothes over the different interfaces for cloud object storage and provides you with a simple set of HTTP methods for accessing your cache.
+
+Till could be useful for you if:
+ 
+ - You need to access some very frequently used objects very quickly (< 5ms), others less so (< 50ms) and others even less so (< 500ms). Till can use Redis, local files, or S3 to serve your data, falling back seamlessly from one to the next if cache misses occur.
+ - You want to provide fast (< 50ms) access to cached binary data from your web app, but your servers have small disks. Set up Till on your local machines, and use `n` GB of each disk to store your cache. (If the cache gets too full, the newer items remain on disk, while the older items can be pushed to S3 or Cloud Files.)
+ - You want to write your web app to use a cloud object store like S3 or Rackspace Cloud Files, but you don't want to have to use the annoying libraries for each in your project. Use plain-old HTTP to talk to `tilld` instead, and configure one or more object stores to be queried.
+ - You're moving data from S3 to Cloud Files (or vice versa) and want to keep your data online as you migrate. Use Till as your interface, and configure it to only write to Cloud Files, while reading from both S3 and Cloud Files. 
+
+
+Till supports the following storage providers:
 
  - Redis (`redis`)
  - Local filesystem (`file`)
- - Other Till servers (`till`)
  - S3 (`s3`)
  - Rackspace Cloud Files (`rackspace`)
+ - Other Till servers (`till`)
  
-A single request to Till can query all (or just one) of these storage providers in sequence.
+A single request to Till can query all (or just one) of these storage providers at the same time, returning the fastest result.
 
 Till is used for **immutable, time-limited** cache data. It is recommended that the keys used to store objects are message digests of the objects themselves, as Till does not allow updates to existing objects in the cache.
 
@@ -25,7 +35,7 @@ Till is very much a work in progress and is currently only used by [the Wub Mach
 TODO
 ---
 
-Many things:
+Many things. Till is still an extremely alpha project.
 
  - GetURL methods internally
  - Optimizations
@@ -33,7 +43,6 @@ Many things:
  - The entire tilld-to-tilld propagation system
  - Distributing objects across tilld servers
  - `select`ing on multiple Get requests and cancelling them once the first one comes back
-    
 
 
 Methods
@@ -46,12 +55,12 @@ Get an object from the cache.
 
 Request Headers:
 
-  - `X-Till-Provider` (**optional**): A comma-separated list of provider names to fetch from, where each name is defined in the configuration. If not provided, providers are fetched from in the order that they are configured.
+  - `X-Till-Provider` (**optional**): A comma-separated list of provider names to fetch from, where each name is defined in the configuration. If not provided, providers are fetched from simultaneously.
   - `X-Till-Lifespan` (**optional**): A number of seconds from now (or `default`) to persist the object for. After this many seconds, the object may be unavailable. Supplying this parameter is equivalent to issuing this `GET` request, immediately followed by a `PUT`.
   
 Response Headers:
 
-  - `X-Till-Metadata` (**optional**): A string, up to 4096 bytes long, that was stored along with the object. This header may be omitted if the object has no metadata.
+  - `X-Till-Metadata` (**optional**): A printable-ASCII string, up to 4096 bytes long and containing no newlines, that was stored along with the object. This header may be omitted if the object has no metadata.
   
 Return codes:
 
@@ -76,7 +85,7 @@ Get an object's location in the cache. Returns a queryable URL to S3, Cloud File
 
 Request Headers:
 
-  - `X-Till-Provider` (**optional**): A comma-separated list of provider names to fetch from, where each name is defined in the configuration. If not provided, providers are fetched from in the order that they are configured.
+  - `X-Till-Providers` (**optional**): A comma-separated list of provider names to fetch from, where each name is defined in the configuration. If not provided, providers are fetched from in the order that they are configured.
 
 Return codes:
 
@@ -92,9 +101,10 @@ Add an object to the cache.
 Request Headers:
 
   - `X-Till-Lifespan`: A number of seconds from now (or `default`) to persist the object for. After this many seconds, the object may be unavailable.
-  - `X-Till-Synchronized` (**optional**, default `0`): A boolean (`1` or `0`) that specifies if this request should wait for acknowledgement of a write from at least one cache provider.
+  - `X-Till-Synchronized` (**optional**, default `0`): A boolean (`1` or `0`) that specifies if this request should wait for acknowledgement of a write from all cache providers. If `0`, a response is returned once one cache provider acknowledges a successful write.
 Response Headers:
-  - `X-Till-Metadata` (**optional**): A string, up to 4096 bytes long, to be stored along with the object. This header may be omitted if the object has no metadata.
+  - `X-Till-Metadata` (**optional**): A printable-ASCII string, up to 4096 bytes long and containing no newlines, to be stored along with the object. This header may be omitted if the object has no metadata.
+  - `X-Till-Providers` (**optional**): A comma-separated list of provider names to persist to, where each name is defined in the configuration. If not provided, providers are persisted to as per their configuration.  
   
 Return codes:
 
@@ -117,7 +127,8 @@ Update an object's lifespan in the cache. The body of this request must be empty
 Request Headers:
 
   - `X-Till-Lifespan`: A number of seconds from now (or `default`) to persist the object for. After this many seconds, the object may be unavailable.  
-  - `X-Till-Synchronized` (**optional**, default `0`): A boolean (`1` or `0`) that specifies if this request should wait for acknowledgement of a write from at least one cache provider.
+  - `X-Till-Synchronized` (**optional**, default `0`): A boolean (`1` or `0`) that specifies if this request should wait for acknowledgement of a write from all cache providers. If `0`, a response is returned once one cache provider acknowledges a successful write.
+
   
 Return codes:
 
@@ -131,17 +142,18 @@ Return codes:
       
     In case of a bad request, the reason for the bad request will be supplied in quoted plaintext (which happens to be valid JSON).
 
+
+Internal Server Methods
+---
   
 #### `POST /api/v1/server/<server_identifier>`
 Notify a Till server of the existence of another Till server.
-Upon receiving this request, a Till server will respond with a POST request to the sender. If this POST request is successful, the server will be registered in the receiver's server table. If the `X-Till-Broadcast` header is not set to `0`, the server will forward the request to other Till servers that it knows about.
+Upon receiving this request, a Till server will respond with a POST request to the sender. If this POST request is successful, the server will be registered in the receiver's server table.
 
 Request Headers:
 
-  - `X-Till-IP`: a reachable (i.e.: non-local) IP that can be used to contact the sender.
-  - `X-Till-Port`: the port that the sender is running on.
-  - `X-Till-Lifespan` (**optional**, default `60`): A number of seconds from now to persist the sending server for. After this many seconds, the sending Till server is forgotten about by the receiver.
-  - `X-Till-Broadcast` (**optional**, default `1`): A boolean (`1` or `0`) that specifies if this request should be re-broadcast onto other known Till servers.
+  - `X-Till-Address`: a reachable (i.e.: non-local) IP/Port pair that can be used to contact the sender.
+  - `X-Till-Lifespan` (**optional**, default `86400`): A number of seconds from now to persist the sending server for. After this many seconds, the sending Till server is forgotten about by the receiver. Once this time limit is up, the receiver sends a POST request back to the sender,  which prompts the 
   
   
 Configuration

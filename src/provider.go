@@ -9,6 +9,8 @@ type Provider interface {
 	Connect() error
 	Disconnect()
 
+	OnServerUp()
+
 	//  API Methods
 	//      The return values of each of these methods:
 	//          *Object is:
@@ -24,6 +26,9 @@ type Provider interface {
 
 	Put(object Object) (Object, error)
 	Update(object Object) (Object, error)
+
+	Name() string
+	AcceptsKey(key string) bool
 }
 
 type BaseProvider struct {
@@ -46,6 +51,19 @@ func (b *BaseProvider) Disconnect() {
 
 }
 
+func (b *BaseProvider) OnServerUp() {
+
+}
+
+func (b *BaseProvider) AcceptsKey(key string) bool {
+	return b.config.AcceptsKey(key)
+}
+
+func (b *BaseProvider) Name() string {
+	return b.config.Name()
+}
+
 func (b *BaseProvider) CanAccept(object Object) (bool, error) {
+	panic(errors.New("CanAccept not implemented on BaseProvider."))
 	return false, errors.New("CanAccept not implemented.")
 }

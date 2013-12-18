@@ -328,13 +328,14 @@ func (r *RedisObject) GetSize() (int64, error) {
 	}
 }
 
-func (r *RedisObject) ReadBytes(length int) ([]byte, error) {
+func (r *RedisObject) Read(b []byte) (int, error) {
+	length := len(b)
 	data, err := redis.Bytes(r.c.Do("GETRANGE", r.objectKey, r.tell, r.tell+length-1))
 	r.tell += len(data)
 	if err != nil {
-		return []byte{}, err
+		return -1, err
 	} else {
-		return data, nil
+		return copy(b, data), nil
 	}
 }
 
