@@ -9,6 +9,9 @@
         {
             "type": "redis",
             "name": "my_redis_instance",
+            "whitelist": [
+                "[a-z]*"
+            ],
             
             "host": "localhost",
             "port": 6379,
@@ -19,6 +22,9 @@
         {
             "type": "file",
             "name": "local_filesystem",
+            "whitelist": [
+                "[0-9]*"
+            ],
             
             "path": "/var/cache/till",
             "maxsize": 10737418240,

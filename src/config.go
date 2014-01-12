@@ -45,16 +45,22 @@ func NewProviderConfig(data map[string]interface{}) ProviderConfig {
 	kind := data["type"]
 
 	whitelist := make([]*regexp.Regexp, 0)
-	for _, obj := range data["whitelist"].([]interface{}) {
-		if pattern, ok := obj.(string); ok {
-			r, err := regexp.Compile(pattern)
-			if err != nil {
-				log.Printf("Could not compile regex \"%v\": %v", pattern, err)
-			} else {
-				whitelist = append(whitelist, r)
+	if src, exists := data["whitelist"]; exists {
+		if patterns, ok := src.([]interface{}); ok {
+			for _, obj := range patterns {
+				if pattern, ok := obj.(string); ok {
+					r, err := regexp.Compile(pattern)
+					if err != nil {
+						log.Printf("Could not compile regex \"%v\": %v", pattern, err)
+					} else {
+						whitelist = append(whitelist, r)
+					}
+				} else {
+					log.Printf("Non-string whitelist entry not found: %v", obj)
+				}
 			}
 		} else {
-			log.Printf("Non-string whitelist entry not found: %v", obj)
+			log.Printf("Whitelist for provider %v is not a list.", data["name"])
 		}
 	}
 
