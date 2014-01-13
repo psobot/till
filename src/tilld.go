@@ -314,7 +314,7 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 		}
 
 		close(result)
-		if o.Object != nil && !o.NotFound {
+		if o != nil && o.Object != nil && !o.NotFound {
 			obj := *(o.Object)
 			if obj != nil {
 				defer obj.Close()
