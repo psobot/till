@@ -314,26 +314,23 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 		}
 
 		close(result)
-		if o != nil && o.Object != nil && !o.NotFound {
-			obj := *(o.Object)
-			if obj != nil {
-				defer obj.Close()
-			}
-		}
 
-		if !o.NotFound && o.Error == nil {
-			size, err := (*(o.Object)).GetSize()
+		if !o.NotFound && o.Error == nil && o.Object != nil {
+			obj := *(o.Object)
+			defer obj.Close()
+
+			size, err := obj.GetSize()
 			if err == nil && size != -1 {
 				writer.Header().Set("Content-Length", strconv.FormatInt(size, 10))
 			}
-			metadata := (*(o.Object)).GetBaseObject().Metadata
+			metadata := obj.GetBaseObject().Metadata
 			if len(metadata) > 0 {
 				writer.Header().Set("X-Till-Metadata", metadata)
 			}
 
 			data := make([]byte, 4096)
 			for {
-				length, err := (*(o.Object)).Read(data)
+				length, err := obj.Read(data)
 				if length == 0 || (err != nil && err != io.EOF) {
 					break
 				} else {
