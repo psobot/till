@@ -91,8 +91,19 @@ func (p *TillProvider) Get(id string) (Object, error) {
 	//	Return objects from the first server to respond with an object.
 	results := make(chan Object, 0)
 
-	if len(state.Servers) > 0 {
-		for _, server := range state.Servers {
+	servers := make([]Server, 0)
+	for _, server := range state.Servers {
+		servers = append(servers, server)
+	}
+
+	if len(servers) == 0 {
+		for _, server_addr := range p.GetConfig().Servers {
+			servers = append(servers, NewServer("", server_addr, 60))
+		}
+	}
+
+	if len(servers) > 0 {
+		for _, server := range servers {
 			go p.queryServer(id, server, results)
 		}
 
