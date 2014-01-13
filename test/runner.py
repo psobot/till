@@ -61,10 +61,13 @@ def gen_single_config(port, redis_port):
         "port": port,
         "bind": "127.0.0.1",
         "public_address": "127.0.0.1:%d" % port,
+        "default_lifespan": 3600,
         "providers": [
             {
                 "type": "redis",
                 "name": "test_redis",
+                "whitelist": [".*"],
+
                 "host": "localhost",
                 "port": redis_port,
                 "db": 0,
@@ -73,6 +76,7 @@ def gen_single_config(port, redis_port):
             {
                 "type": "file",
                 "name": "test_file",
+                "whitelist": [".*"],
 
                 "path": "/tmp/till_%d" % port,
                 "maxsize": 1024 * 1024,
@@ -93,10 +97,12 @@ def gen_multiple_config(port, cluster_port):
         "port": port,
         "bind": "127.0.0.1",
         "public_address": "127.0.0.1:%d" % port,
+        "default_lifespan": 3600,
         "providers": [
             {
                 "type": "file",
                 "name": "test_file",
+                "whitelist": [".*"],
 
                 "path": "/tmp/till_%d" % port,
                 "maxsize": 1024 * 1024,
@@ -106,6 +112,8 @@ def gen_multiple_config(port, cluster_port):
             {
                 "type": "till",
                 "name": "test_cluster",
+                "whitelist": [".*"],
+
                 "request_types": ["file", "redis"],
                 "servers": ["127.0.0.1:%d" % cluster_port],
             }
