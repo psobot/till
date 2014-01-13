@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -36,10 +37,7 @@ func NewTillProviderConfig(base BaseProviderConfig, data map[string]interface{})
 			return nil, errors.New("Request types must be a list of strings.")
 		}
 	} else {
-		//  By default, only check the "file" and "redis" providers.
-		config.RequestTypes = []string{
-			"file", "redis",
-		}
+		config.RequestTypes = []string{}
 	}
 
 	servers, ok := data["servers"]
@@ -148,7 +146,10 @@ func (p *TillProvider) queryServer(id string, server Server, results chan Object
 	if err != nil {
 		log.Printf("Error making new outgoing Till request: %v", err)
 	} else {
-		//req.Header.Add("X-Till-Address", source.Address)
+		if len(p.GetConfig().RequestTypes) > 0 {
+			req.Header.Add("X-Till-Providers", strings.Join(p.GetConfig().RequestTypes, ","))
+		}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error making new outgoing Till request: %v", err)
