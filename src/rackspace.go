@@ -16,6 +16,7 @@ type RackspaceProviderConfig struct {
 	RackspaceAPIKey    string `json:"rackspace_api_key"`
 	RackspaceContainer string `json:"rackspace_container"`
 	RackspaceRegion    string `json:"rackspace_region"`
+	RackspacePrefix    string `json:"rackspace_prefix"`
 }
 
 func NewRackspaceProviderConfig(base BaseProviderConfig, data map[string]interface{}) (*RackspaceProviderConfig, error) {
@@ -61,6 +62,16 @@ func NewRackspaceProviderConfig(base BaseProviderConfig, data map[string]interfa
 		}
 	} else {
 		config.RackspaceRegion = "ORD"
+	}
+
+	prefix, ok := data["rackspace_prefix"]
+	if ok {
+		config.RackspacePrefix, ok = prefix.(string)
+		if !ok {
+			return nil, errors.New("rackspace_prefix must be a string.")
+		}
+	} else {
+		config.RackspacePrefix = ""
 	}
 
 	return &config, nil
@@ -118,7 +129,7 @@ func (p *RackspaceProvider) Get(id string) (Object, error) {
 	path := id
 
 	var buf bytes.Buffer
-	headers, err := p.conn.ObjectGet(p.container.Name, path, &buf, true, nil)
+	headers, err := p.conn.ObjectGet(p.container.Name, p.GetConfig().RackspacePrefix+path, &buf, true, nil)
 	rc := NewDummyReadCloser(&buf)
 
 	if err == swift.ObjectNotFound {
@@ -161,7 +172,7 @@ func (p *RackspaceProvider) Put(o Object) (Object, error) {
 	} else {
 		_, err := p.conn.ObjectPut(
 			p.container.Name,
-			path,
+			p.GetConfig().RackspacePrefix+path,
 			o,
 			false,
 			"",
