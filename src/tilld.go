@@ -284,7 +284,9 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 	if id != nil {
 		var o RequestResult
 		was_timeout := false
-		timeout := 1000 // msec
+
+		//	TODO: Make me configurable
+		timeout := 2000 // msec
 		dispatched := 0
 		received := 0
 		successful := 0

@@ -107,7 +107,8 @@ func (p *TillProvider) Get(id string) (Object, error) {
 			go p.queryServer(id, server, results)
 		}
 
-		timeout := 1000
+		//	TODO: Make me configurable
+		timeout := 2000
 		endtime := time.Now().Add(time.Duration(timeout) * time.Millisecond)
 
 		for {
