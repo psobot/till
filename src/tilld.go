@@ -314,8 +314,11 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 		}
 
 		close(result)
-		if !o.NotFound && o.Object != nil {
-			defer (*(o.Object)).Close()
+		if o.Object != nil && !o.NotFound {
+			obj := *(o.Object)
+			if obj != nil {
+				defer obj.Close()
+			}
 		}
 
 		if !o.NotFound && o.Error == nil {
@@ -545,8 +548,16 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 			} else {
 				http.Error(writer, string(jsondata), 504)
 			}
+		} else if dispatched == 0 {
+			http.Error(writer, "\"No providers could handle the provided key. Ensure that whitelists are appropriately configured.\"", 404)
 		} else {
-			writer.WriteHeader(502)
+			jsondata, err := json.Marshal(results)
+			if err != nil {
+				log.Printf("Could not marshal error result data: %v", err)
+				http.Error(writer, "\"Failed to find object due to upstream errors.\"", 502)
+			} else {
+				http.Error(writer, string(jsondata), 502)
+			}
 		}
 	}
 }
