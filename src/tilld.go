@@ -89,9 +89,18 @@ func main() {
 		}
 	}()
 
-	err := http.ListenAndServe(":"+strconv.Itoa(state.Config.Port), handler)
+	if state.Config.Bind != "" {
+		go func() {
+			err := http.ListenAndServe(state.Config.Bind+":"+strconv.Itoa(state.Config.Port), handler)
+			if err != nil {
+				log.Printf("ListenAndServe on %v failed: %v", state.Config.Bind, err)
+			}
+		}()
+	}
+
+	err := http.ListenAndServe("127.0.0.1:"+strconv.Itoa(state.Config.Port), handler)
 	if err != nil {
-		log.Printf("ListenAndServe failed:", err)
+		log.Printf("ListenAndServe on %v failed: %v", state.Config.Bind, err)
 	}
 }
 
