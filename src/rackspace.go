@@ -121,7 +121,9 @@ func (p *RackspaceProvider) Get(id string) (Object, error) {
 	headers, err := p.conn.ObjectGet(p.container.Name, path, &buf, true, nil)
 	rc := NewDummyReadCloser(&buf)
 
-	if err != nil {
+	if err == swift.ObjectNotFound {
+		return nil, nil
+	} else if err != nil {
 		return nil, err
 	} else {
 		md, _ := headers["X-Object-Meta-Till"]
