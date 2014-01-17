@@ -291,6 +291,7 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 		received := 0
 		successful := 0
 		result := make(chan RequestResult)
+		defer close(result)
 		results := make(map[string]map[string]string)
 
 		providers, _ := GetProviders(r, *id)
@@ -323,8 +324,6 @@ func ObjectGetEndpoint(writer http.ResponseWriter, r *http.Request) {
 				break Join
 			}
 		}
-
-		close(result)
 
 		if !o.NotFound && o.Error == nil && o.Object != nil {
 			obj := *(o.Object)
@@ -488,6 +487,7 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 		received := 0
 		successful := 0
 		result := make(chan RequestResult)
+		defer close(result)
 
 		results := make(map[string]map[string]string)
 
@@ -571,6 +571,12 @@ func ObjectPostEndpoint(writer http.ResponseWriter, r *http.Request) {
 }
 
 func SaveObject(p Provider, bo BaseObject, buf *FullyBufferedReader, size int64, result chan RequestResult) {
+	//	Let's supress any panics in this function caused by
+	//	putting objects into a closed channel.
+	defer func() {
+		recover()
+	}()
+
 	obj := UploadObject{
 		BaseObject: bo,
 		reader:     buf.Reader(),
@@ -602,6 +608,12 @@ func SaveObject(p Provider, bo BaseObject, buf *FullyBufferedReader, size int64,
 }
 
 func UpdateObject(p Provider, bo BaseObject, result chan *Object) {
+	//	Let's supress any panics in this function caused by
+	//	putting objects into a closed channel.
+	defer func() {
+		recover()
+	}()
+
 	obj := UploadObject{BaseObject: bo}
 	defer obj.Close()
 	o, err := p.Update(&obj)
