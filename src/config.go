@@ -97,10 +97,12 @@ func NewProviderConfig(data map[string]interface{}) ProviderConfig {
 }
 
 type BaseConfig struct {
-	Port            int    `json:"port"`
-	Bind            string `json:"bind"`
-	DefaultLifespan int    `json:"default_lifespan"`
-	PublicAddress   string `json:"public_address"`
+	Port                      int    `json:"port"`
+	Bind                      string `json:"bind"`
+	DefaultLifespan           int    `json:"default_lifespan"`
+	PublicAddress             string `json:"public_address"`
+	GetTimeoutInMilliseconds  int    `json:"get_timeout_in_milliseconds"`
+	PostTimeoutInMilliseconds int    `json:"post_timeout_in_milliseconds"`
 }
 
 type IncomingConfig struct {
@@ -134,12 +136,25 @@ func (c *IncomingConfig) toConfig() *Config {
 	}
 
 	config := &Config{}
+	//	TODO: Not this
 	config.Port = c.Port
 	config.Bind = c.Bind
 	config.Providers = newProviders
 	config.DefaultLifespan = c.DefaultLifespan
 	config.LifespanPatterns = lifespanPatterns
 	config.PublicAddress = c.PublicAddress
+
+	if c.GetTimeoutInMilliseconds > 0 {
+		config.GetTimeoutInMilliseconds = c.GetTimeoutInMilliseconds
+	} else {
+		config.GetTimeoutInMilliseconds = 1000
+	}
+	if c.PostTimeoutInMilliseconds > 0 {
+		config.PostTimeoutInMilliseconds = c.PostTimeoutInMilliseconds
+	} else {
+		config.PostTimeoutInMilliseconds = 1000
+	}
+
 	return config
 }
 
