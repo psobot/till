@@ -124,7 +124,6 @@ func (p *S3Provider) GetConfig() S3ProviderConfig {
 }
 
 func (p *S3Provider) Get(id string) (Object, error) {
-	panic("nope")
 	path := p.GetConfig().AWSS3Path + id
 	req := &S3Request{
 		bucket: p.bucket.Name,
@@ -157,7 +156,6 @@ func (p *S3Provider) GetURL(id string) (Object, error) {
 }
 
 func (p *S3Provider) Put(o Object) (Object, error) {
-	panic("nope")
 	path := p.GetConfig().AWSS3Path + o.GetBaseObject().identifier
 	size, err := o.GetSize()
 
