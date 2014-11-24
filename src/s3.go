@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	//"time"
+	"fmt"
 	"io"
 	"launchpad.net/goamz/aws"
 	"log"
@@ -136,7 +137,14 @@ func (p *S3Provider) Get(id string) (Object, error) {
 	hresp, err := p.bucket.run(req)
 
 	if err != nil {
-		return nil, err
+		//	TODO: Don't do string comparisons here to determine missing files.
+		//	We should use a better S3 library.
+		errorString := fmt.Sprintf("%v", err)
+		if errorString == "The specified key does not exist." {
+			return nil, nil
+		} else {
+			return nil, err
+		}
 	} else {
 		return &S3Object{
 			BaseObject: BaseObject{
